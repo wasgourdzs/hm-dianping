@@ -1,5 +1,6 @@
 package com.hmdp.service;
 
+import com.hmdp.dto.Result;
 import com.hmdp.entity.VoucherOrder;
 import com.baomidou.mybatisplus.extension.service.IService;
 
@@ -12,5 +13,16 @@ import com.baomidou.mybatisplus.extension.service.IService;
  * @since 2021-12-22
  */
 public interface IVoucherOrderService extends IService<VoucherOrder> {
-
+    /*
+    * 下单秒杀卷
+    * */
+    Result seckillVoucher(Long voucherId) ;
+    /*
+    * 创建秒杀订单
+    * */
+    Result createVoucherOrder(Long voucherId);
+    /*
+    * 创建秒杀订单（通过队列）
+    * */
+    void createVoucherOrderWithQueue (VoucherOrder voucherOrder);
 }
