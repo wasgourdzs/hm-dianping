@@ -29,4 +29,12 @@ public interface IBlogService extends IService<Blog> {
     * 查看点赞用户
     * */
     Result queryBlogLikes(Long id);
+    /*
+    * 发布博客
+    * */
+    Result saveBlog(Blog blog);
+    /*
+    * 查看自己关注的博客
+    * */
+    Result queryBlogOfFollow(Long max, Integer offset);
 }

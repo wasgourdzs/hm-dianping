@@ -21,4 +21,8 @@ public interface IShopService extends IService<Shop> {
     * 利用缓存更新策略更新店铺信息
     * */
     Result update(Shop shop);
+    /*
+    * 分页查询店铺（带有距离信息）
+    * */
+    Result queryShopByType(Integer typeId, Integer current, Double x, Double y);
 }

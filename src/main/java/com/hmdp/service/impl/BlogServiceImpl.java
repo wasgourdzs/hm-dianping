@@ -4,12 +4,15 @@ import cn.hutool.core.bean.BeanUtil;
 import cn.hutool.core.util.BooleanUtil;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.hmdp.dto.Result;
+import com.hmdp.dto.ScrollResult;
 import com.hmdp.dto.UserDTO;
 import com.hmdp.entity.Blog;
+import com.hmdp.entity.Follow;
 import com.hmdp.entity.User;
 import com.hmdp.mapper.BlogMapper;
 import com.hmdp.service.IBlogService;
 import com.baomidou.mybatisplus.extension.service.impl.ServiceImpl;
+import com.hmdp.service.IFollowService;
 import com.hmdp.service.IUserService;
 import com.hmdp.utils.RedisConstants;
 import com.hmdp.utils.SystemConstants;
@@ -17,9 +20,11 @@ import com.hmdp.utils.UserHolder;
 import jodd.util.StringUtil;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.data.redis.core.StringRedisTemplate;
+import org.springframework.data.redis.core.ZSetOperations;
 import org.springframework.stereotype.Service;
 
 import javax.annotation.Resource;
+import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
 import java.util.Set;
@@ -40,6 +45,32 @@ public class BlogServiceImpl extends ServiceImpl<BlogMapper, Blog> implements IB
     private IUserService userService;
     @Resource
     private StringRedisTemplate stringRedisTemplate;
+    @Resource
+    private IFollowService followService;
+
+    /*
+    * 发布博客
+    * */
+    @Override
+    public Result saveBlog(Blog blog) {
+        // 获取登录用户
+        UserDTO user = UserHolder.getUser();
+        blog.setUserId(user.getId());
+        // 保存探店博文
+        boolean success = save(blog);
+        if (!success) {
+            return Result.fail("发布博客失败");
+        }
+        //数据库中查粉丝是谁
+        List<Follow> followUserId = followService.query().eq("follow_user_id", user.getId()).list();
+        //推送给粉丝 （写到redis内博客的ID，查询时候获取博客ID查询即可）
+        for (Follow follow : followUserId) {
+            Long followId = follow.getUserId();
+            stringRedisTemplate.opsForZSet().add(RedisConstants.FEED_KEY + followId, blog.getId().toString(), System.currentTimeMillis());
+        }
+        //返回博客ID
+        return Result.ok(blog.getId());
+    }
 
     @Override
     public Result queryHotBlog(Integer current) {
@@ -152,5 +183,56 @@ public class BlogServiceImpl extends ServiceImpl<BlogMapper, Blog> implements IB
             return;
         }
         blog.setIsLike(false);
+    }
+
+    /*
+    * 查看自己关注的博客
+    * */
+    @Override
+    public Result queryBlogOfFollow(Long max, Integer offset) {
+        //获得当前用户
+        UserDTO user = UserHolder.getUser();
+        if (user == null) {
+            return Result.fail("请先登录");
+        }
+        Long userId = user.getId();
+        //去redis中查收件箱(滚动方式)
+        Set<ZSetOperations.TypedTuple<String>> tuples = stringRedisTemplate.opsForZSet()
+                .reverseRangeByScoreWithScores(RedisConstants.FEED_KEY + userId, 0, max, offset, 3);
+        if (tuples == null || tuples.isEmpty()) {
+            return Result.ok();
+        }
+        //解析得到博客内容，同时得到最小时间戳和偏移量
+        List<Long> blogIds = new ArrayList<>(tuples.size());
+        long minTime = max;
+        int os = offset;
+        for (ZSetOperations.TypedTuple<String> tuple : tuples) {
+            long time = tuple.getScore().longValue();
+            if (time == minTime) {
+                os++;
+            } else {
+                minTime = time;
+                os = 1;
+            }
+            String blogId = tuple.getValue();
+            blogIds.add(Long.valueOf(blogId));
+        }
+        //查数据库（根据ids中的顺序查）
+        String StrIds = StringUtil.join(blogIds, ",");
+        List<Blog> list = query().in("id", blogIds).last("ORDER BY FIELD(id," + StrIds + ")").list();
+        //为每个blog设置喜欢数和用户（是否点赞和用户显示）
+        for (Blog blog : list) {
+            //封装用户相关信息
+            queryUserByBlog(blog);
+            //判断用户是否点赞，封装到blog
+            userLikeBlog(blog);
+        }
+        //结果对象
+        ScrollResult scrollResult = new ScrollResult();
+        scrollResult.setList(list);
+        scrollResult.setMinTime(minTime);
+        scrollResult.setOffset(os);
+
+        return Result.ok(scrollResult);
     }
 }
