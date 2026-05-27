@@ -185,4 +185,24 @@ class HmDianPingApplicationTests {
         }
 
     }
+
+    /*
+    * UV统计
+    * */
+    @Test
+    public void testUV () {
+        String[] users = new String[1000];
+        int j = 0;
+        for (int i = 1; i <= 1000000; i++) {
+            users[j] = "user_" + i;
+            j++;
+            if (j % 1000 == 0) {
+                j = 0;
+                stringRedisTemplate.opsForHyperLogLog().add("hl1", users);
+            }
+        }
+        //统计数量
+        Long size = stringRedisTemplate.opsForHyperLogLog().size("hl1");
+        System.out.println(size);
+    }
 }
