@@ -25,3 +25,12 @@ mybatis-plus:
 logging:
   level:
     com.hmdp: debug
+
+# 【秒杀优惠券信息多级缓存改造】本地缓存的配置项(刷新时间、过期时间)、Redis缓存的过期时间
+hmdp:
+  cache:
+    voucher-list:
+      mode: caffeine
+      refresh-after-write: 5s
+      expire-after-write: 10m
+      redis-ttl: 30m
